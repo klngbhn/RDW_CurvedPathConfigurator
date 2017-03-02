@@ -2,15 +2,28 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-public class JointPoint {
+/*
+ * A jointpoint is the (real world) crossing of several curves.
+ * There are only three jointpoints in total.
+ * */
+[System.Serializable]
+public class JointPoint : ScriptableObject
+{
 
+    [SerializeField]
     private Vector3 position;
-    private List<Curve> curves;
+    [SerializeField]
+    private string label;
 
-    public JointPoint(Vector3 position)
+    public void OnEnable()
+    {
+        hideFlags = HideFlags.HideAndDontSave;
+    }
+
+    public void init(Vector3 position, string label)
     {
         this.position = position;
-        curves = new List<Curve>();
+        this.label = label;
     }
 
     public Vector3 getPosition()
@@ -18,8 +31,8 @@ public class JointPoint {
         return position;
     }
 
-    public void addCurve(Curve curve)
+    public string getLabel()
     {
-        curves.Add(curve);
+        return label;
     }
 }

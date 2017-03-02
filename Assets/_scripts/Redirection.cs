@@ -1,132 +1,164 @@
 ﻿using System.Collections;
 using System.Collections.Generic;
+using UnityEditor;
 using UnityEngine;
 
+/*
+ * This class handles the redirection.
+ * It chooses the current path and curve itself according to the position of the user.
+ * */
 public class Redirection : MonoBehaviour {
 
     public Transform orientationOffset;
     public Transform positionOffset;
 
-    public bool showGizmos = false;
-
-    private JointPoint jointPointA;
-    private JointPoint jointPointB;
-    private JointPoint jointPointC;
-
-    private Curve curveABsmallRadius;
-    private Curve curveACsmallRadius;
-    private Curve curveBCsmallRadius;
-    private Curve curveABlargeRadius;
-    private Curve curveAClargeRadius;
-    private Curve curveBClargeRadius;
+    public RedirectionDataStructure data;
 
     private JointPoint currentJoint;
     private VirtualIntersection currentIntersection;
     private Curve currentCurve;
     private VirtualPath currentPath;
 
+    private bool ready = false;
     private bool redirectionStarted = false;
-    private bool redirectLeft = false;
+    private int redirectionDirection = 0;
 
-    // Use this for initialization
-    void Start () {
-        /*
-            Tracking Space -> specify jointpoints -> specify curves
-        */
+    private float oldRotation = 0;
 
-        // Set three joint points (real world)
-        // TODO: Later this will be done by using the tracking space size
-        jointPointA = new JointPoint(new Vector3(0.5f, 0f, -1.25f));
-        jointPointB = new JointPoint(new Vector3(0.5f, 0f, 1.25f));
-        jointPointC = new JointPoint(new Vector3(-1.6f, 0, 0));
-
-        // Specify curves with small radii (real world)
-        curveABsmallRadius = createSmallCurve(jointPointA, jointPointB);
-        curveACsmallRadius = createSmallCurve(jointPointA, jointPointC);
-        curveBCsmallRadius = createSmallCurve(jointPointB, jointPointC);
-
-        // Specify curves with large radii (real world)
-        curveABlargeRadius = createLargeCurve(jointPointA, jointPointB, jointPointC);
-        curveAClargeRadius = createLargeCurve(jointPointA, jointPointC, jointPointB);
-        curveBClargeRadius = createLargeCurve(jointPointB, jointPointC, jointPointA);
-
-        //TODO: Think about this. Do the jointpoints need to know their curves?
-        jointPointA.addCurve(curveABsmallRadius);
-
-        // TODO: This will be loaded from the path configuration tool in the future
-        // Specify intersections and paths (virtual world)
-        VirtualIntersection intersection = new VirtualIntersection(jointPointA.getPosition(), jointPointA);
-        VirtualIntersection intersection2 = new VirtualIntersection(jointPointA.getPosition(), jointPointB); // TODO: This is not the correct position!!!
-        VirtualPath path = new VirtualPath(new Vector3(0.5f, 0, 2.5f), 3.75f, curveABsmallRadius, intersection, intersection2);
-
-        // TODO: How to set the starting conditions?
-        currentJoint = jointPointA;
-        currentIntersection = intersection;
-        currentCurve = curveABsmallRadius;
-        currentPath = path;
-    }
-
-    private Curve createSmallCurve(JointPoint joint1, JointPoint joint2)
-    {
-        Vector3 circleCenter = Vector3.Lerp(joint1.getPosition(), joint2.getPosition(), 0.5f);
-        float radius = 0.5f * Vector3.Magnitude(joint1.getPosition() - joint2.getPosition());
-        List<JointPoint> endPoints = new List<JointPoint>();
-        endPoints.Add(joint1);
-        endPoints.Add(joint2);
-        Curve curve = new Curve(circleCenter, radius, endPoints);
-
-        Debug.Log(circleCenter);
-        Debug.Log(radius);
-
-        return curve;
-    }
-
-    private Curve createLargeCurve(JointPoint joint1, JointPoint joint2, JointPoint joint3)
-    {
-        Vector3 circleCenter = joint3.getPosition();
-        float radius = Vector3.Magnitude(joint1.getPosition() - joint2.getPosition());
-        List<JointPoint> endPoints = new List<JointPoint>();
-        endPoints.Add(joint1);
-        endPoints.Add(joint2);
-        Curve curve = new Curve(circleCenter, radius, endPoints);
-
-        Debug.Log(circleCenter);
-        Debug.Log(radius);
-
-        return curve;
-    }
-
-    // Update is called once per frame
-    void Update () {
-        /*
-            "Start" button -> startRedirection -> stopRedirection
-        */
-
-        if (Input.GetKeyDown(KeyCode.Space) || SteamVR_Controller.Input(SteamVR_Controller.GetDeviceIndex(SteamVR_Controller.DeviceRelation.FarthestRight)).GetPressDown(SteamVR_Controller.ButtonMask.Trigger))
+    void Start() {
+        // Load data structure object (created by tool) from disk
+        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets\Resources\data.asset", typeof(RedirectionDataStructure));
+        if (data != null)
         {
-            startRedirection();
+            currentIntersection = data.intersections[0];
+            currentJoint = currentIntersection.getJoint();
+        }
+        else
+            Debug.Log("Data is null");
+    }
+
+    /*
+     * Starts, stops, and executes the redirection.
+     * In the beginning, "ready" button has to be pressed. Then, the user can start walking and
+     * the redirection will be started and stopped automatically when crossing the intersections.
+     * 
+     * "Ready" button -> startRedirection -> stopRedirection
+     * */
+    void Update () {
+		if (Input.GetKeyDown(KeyCode.Space))
+		{
+            ready = true;
         }
 
         if (redirectionStarted)
+        {
             doRedirection();
+
+            // if user reaches one of the endpoints of current path
+            //      stop redirection
+            // TODO: Right now, redirection stops only at the end point, not at the start point
+            Vector2 userPosition = switchDimensions(Camera.main.transform.position);
+            Vector2 intersectionCenter = switchDimensions(currentPath.getOtherIntersection(currentIntersection).getPosition());
+            float distance = Vector2.Distance(userPosition, intersectionCenter);
+            if (distance < 0.25f)
+                stopRedirection();
+        }
+        else if(ready)
+        {
+            // if user crosses boundary to one of the paths
+            //      start redirection
+
+            if (currentIntersection.getPath(0) != null)
+            {
+                if (isPathChosen(currentIntersection.getPath(0)))
+                    startRedirection(currentIntersection.getPath(0));
+            }
+            if (currentIntersection.getPath(1) != null)
+            {
+                if (isPathChosen(currentIntersection.getPath(1)))
+                    startRedirection(currentIntersection.getPath(1));
+            }
+            if (currentIntersection.getPath(2) != null)
+            {
+                if (isPathChosen(currentIntersection.getPath(2)))
+                    startRedirection(currentIntersection.getPath(2));
+            }
+            if (currentIntersection.getPath(3) != null)
+            {
+                if (isPathChosen(currentIntersection.getPath(3)))
+                    startRedirection(currentIntersection.getPath(3));
+            }
+
+        }
+            
     }
 
-    private void startRedirection()
+    /*
+     * Checks if user choosed to walk on the specified path.
+     * */
+    private bool isPathChosen(VirtualPath path)
     {
-        redirectionStarted = true;
-        redirectLeft = true;
-
-        // TODO: Implement this:
-
-        // If from A to B: redirect left
-        // If from B to C: redirect left
-        // If from C to A: redirect left
-
-        // If from A to C: redirect right
-        // If from C to B: redirect right
-        // If from B to A: redirect right
+        int direction = getRedirectionDirection(currentJoint, path.getCurve());
+        Vector3 directionToPathCircleCenter = (path.getCircleCenter() - currentIntersection.getPosition()).normalized;
+        Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToPathCircleCenter;
+        Vector3 planePosition = currentIntersection.getPosition() + rotatedDirectionVector * 0.25f;
+        Plane plane = new Plane(rotatedDirectionVector.normalized, planePosition);
+        if (plane.GetSide(Camera.main.transform.position))
+            return true;
+        return false;
     }
 
+    /*
+     * Starts redirection on the specified path.
+     * Sets current path and current curve as well as the redirection direction.
+     * */
+    private void startRedirection(VirtualPath path)
+    {
+        currentCurve = path.getCurve(); 
+        currentPath = path; 
+        redirectionDirection = this.getRedirectionDirection(currentJoint, currentCurve);
+        redirectionStarted = true;
+        Debug.Log("Redirection started with target: " + currentPath.getOtherIntersection(currentIntersection).getLabel());
+    }
+
+    /*
+     * Returns the direction (left or right) to that the current path is bent.
+     * -1 is left, 1 is right.
+     * */
+    private int getRedirectionDirection(JointPoint joint, Curve curve)
+    {
+        if (joint.Equals(data.jointPointA))
+        {
+            JointPoint endJoint = curve.getOtherJointPoint(joint);
+            if (endJoint.Equals(data.jointPointB))
+                return -1;
+            if (endJoint.Equals(data.jointPointC))
+                return 1;
+        }
+        if (joint.Equals(data.jointPointB))
+        {
+            JointPoint endJoint = curve.getOtherJointPoint(joint);
+            if (endJoint.Equals(data.jointPointA))
+                return 1;
+            if (endJoint.Equals(data.jointPointC))
+                return -1;
+        }
+        if (joint.Equals(data.jointPointC))
+        {
+            JointPoint endJoint = curve.getOtherJointPoint(joint);
+            if (endJoint.Equals(data.jointPointB))
+                return 1;
+            if (endJoint.Equals(data.jointPointA))
+                return -1;
+        }
+
+        return 0;
+    }
+
+    /*
+     * Executes the redirection according to the chosen curve and path by
+     * calculating a position and orientation for the virtual camera.
+     * */
     private void doRedirection()
     {
         // Set offset transforms (virtual position/orientation is set to zero)
@@ -139,15 +171,16 @@ public class Redirection : MonoBehaviour {
         //Debug.Log("Current: " + realWorldCurrentPosition);
 
         // Calculate distance between real world current position and real world circle center point
-        float distance = Vector2.Distance(realWorldCurrentPosition, currentCurve.getCircleCenter());
+        float distance = Vector2.Distance(realWorldCurrentPosition, switchDimensions(currentCurve.getCircleCenter()));
         //Debug.Log("Distance: " + distance);
 
         // Calculate angle between radius and distance
-        float degreesWalkedOnRealCircle = Mathf.Acos((Vector2.Dot((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())), (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition))) / ((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())).magnitude * (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition).magnitude));
-        //Debug.Log("degreesWalkedOnRealCircle: " + degreesWalkedOnRealCircle);
+        //Vector2.Angle(switchDimensions(switchDimensions(currentJoint.getPosition() - currentCurve.getCircleCenter())), realWorldCurrentPosition - switchDimensions(currentCurve.getCircleCenter()));
+        float angleWalkedOnRealCircle = Mathf.Acos((Vector2.Dot((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())), (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition))) / ((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())).magnitude * (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition).magnitude));
+        //Debug.Log("angleWalkedOnRealCircle: " + angleWalkedOnRealCircle);
 
         // Multiply angle and radius = walked distance
-        float walkedDistance = degreesWalkedOnRealCircle * currentCurve.getRadius();
+        float walkedDistance = angleWalkedOnRealCircle * currentCurve.getRadius();
         //Debug.Log("Walked: " + walkedDistance);
 
         // Calculate side drift: d-r
@@ -155,81 +188,47 @@ public class Redirection : MonoBehaviour {
         //Debug.Log("Side: " + sideDrift);
 
         // Calculate angle on virtual circle
-        float degreesWalkedOnVirtualCircle = walkedDistance / currentPath.getRadius();
-        //Debug.Log("degreesWalkedOnVirtualCircle: " + degreesWalkedOnVirtualCircle);
+        float angleWalkedOnVirtualCircle = walkedDistance / currentPath.getRadius();
+         //Debug.Log("angleWalkedOnVirtualCircle: " + angleWalkedOnVirtualCircle);
 
-        if (redirectLeft)
-        {
-            Vector2 v1 = switchDimensions(currentIntersection.getPosition() - currentPath.getCircleCenter());
-            v1 = v1 / v1.magnitude;
-            //Debug.Log("V1: " + v1);
+        // Calculate direction from virtual circle center to intersection
+        Vector2 directionToIntersection = switchDimensions(currentIntersection.getPosition() - currentPath.getCircleCenter()).normalized;
+        //Debug.Log("directionToIntersection: " + directionToIntersection);
 
-            Vector3 v2 = Quaternion.AngleAxis(-degreesWalkedOnVirtualCircle * Mathf.Rad2Deg, Vector3.up) * new Vector3(v1.x, 0, v1.y);
-            v2 = v2 * (currentPath.getRadius() + sideDrift);
-            Vector2 v3 = switchDimensions(v2);
-            // Debug.Log("V3: " + v3);
+        // Calculate virtual position by rotating direction by angle walked
+        Vector3 virtualPosition = Quaternion.AngleAxis(redirectionDirection * angleWalkedOnVirtualCircle * Mathf.Rad2Deg, Vector3.up) * new Vector3(directionToIntersection.x, 0, directionToIntersection.y);
+        // Add side drift to virtual position
+        virtualPosition = virtualPosition * (currentPath.getRadius() + sideDrift);
+        //Debug.Log("virtualPosition: " + virtualPosition);
 
+        // Calculate and set virtual position
+        this.transform.position = new Vector3(currentPath.getCircleCenter().x + virtualPosition.x, Camera.main.transform.localPosition.y, currentPath.getCircleCenter().z + virtualPosition.z); 
+        //Debug.Log(this.transform.position);
 
-            // Calculate point on virtual circle
-            //Vector2 pointOnVirtualCircle = virtualWorldCircleCenter - new Vector2((rotationOfCurvePoint * new Vector3(-Mathf.Sin(degreesWalkedOnVirtualCircle), 0, Mathf.Cos(degreesWalkedOnVirtualCircle))).x, (rotationOfCurvePoint * new Vector3(-Mathf.Sin(degreesWalkedOnVirtualCircle), 0, Mathf.Cos(degreesWalkedOnVirtualCircle))).z) * virtualRadius;
-            //Debug.Log("point: " + point);
-            //Debug.Log("degreesWalkedOnRealCircle " + degreesWalkedOnRealCircle+"; );
-
-            // Calculate and set new position (add sideDrift to point on virtual circle) and rotation
-            this.transform.position = new Vector3(currentPath.getCircleCenter().x + v3.x, Camera.main.transform.localPosition.y, currentPath.getCircleCenter().y + v3.y); //new Vector3((pointOnVirtualCircle + ((pointOnVirtualCircle - virtualWorldCircleCenter) / (pointOnVirtualCircle - virtualWorldCircleCenter).magnitude) * sideDrift).x, Camera.main.transform.localPosition.y, (pointOnVirtualCircle + ((pointOnVirtualCircle - virtualWorldCircleCenter) / (pointOnVirtualCircle - virtualWorldCircleCenter).magnitude) * sideDrift).y);
-            this.transform.rotation = /*globalStartRotation * */ Quaternion.Euler(Vector3.up * Mathf.Rad2Deg * (degreesWalkedOnRealCircle - degreesWalkedOnVirtualCircle)) * realWorldCurrentRotation;
-        }
-        else
-        {
-            Vector2 v1 = currentIntersection.getPosition() - currentPath.getCircleCenter();
-            v1 = v1 / v1.magnitude;
-            //Debug.Log("V1_: " + v1);
-
-            Vector3 v2 = Quaternion.AngleAxis(degreesWalkedOnVirtualCircle * Mathf.Rad2Deg, Vector3.up) * new Vector3(v1.x, 0, v1.y);
-            v2 = v2 * (currentPath.getRadius() + sideDrift);
-            Vector2 v3 = switchDimensions(v2);
-            //Debug.Log("V3_: " + v3);
-
-            // Calculate point on virtual circle
-            // Vector2 point = virtualWorldCircleCenter + new Vector2((rotationOfCurvePoint * new Vector3(Mathf.Sin(degreesWalkedOnVirtualCircle), 0, Mathf.Cos(degreesWalkedOnVirtualCircle))).x, (rotationOfCurvePoint * new Vector3(Mathf.Sin(degreesWalkedOnVirtualCircle), 0, Mathf.Cos(degreesWalkedOnVirtualCircle))).z) * virtualRadius;
-            //Debug.Log("point: " + point);
-
-            // Calculate and set new position and rotation
-            this.transform.position = new Vector3(currentPath.getCircleCenter().x + v3.x, Camera.main.transform.localPosition.y, currentPath.getCircleCenter().y + v3.y);  //new Vector3((point + ((point - virtualWorldCircleCenter) / (point - virtualWorldCircleCenter).magnitude) * sideDrift).x, Camera.main.transform.localPosition.y, (point + ((point - virtualWorldCircleCenter) / (point - virtualWorldCircleCenter).magnitude) * sideDrift).y);
-            this.transform.rotation = /*globalStartRotation * */ Quaternion.Euler(Vector3.up * Mathf.Rad2Deg * -(degreesWalkedOnRealCircle - degreesWalkedOnVirtualCircle)) * realWorldCurrentRotation;
-        }
+        // Calculate and set virtual rotation: redirection + current camera rotation + old rotation
+        float redirection = Mathf.Rad2Deg * -redirectionDirection * (angleWalkedOnRealCircle - angleWalkedOnVirtualCircle);
+        Quaternion virtualRotation = Quaternion.Euler(realWorldCurrentRotation.eulerAngles.x, redirection + realWorldCurrentRotation.eulerAngles.y + oldRotation, realWorldCurrentRotation.eulerAngles.z);
+        this.transform.rotation = virtualRotation;
     }
 
+    /*
+     * Stops the redirection.
+     * Sets current intersection and current joint to the next point.
+     * */
     private void stopRedirection()
     {
-
+        currentIntersection = currentPath.getOtherIntersection(currentIntersection);
+        currentJoint = currentIntersection.getJoint();
+        oldRotation += currentPath.getAngle() * -redirectionDirection;
+        redirectionStarted = false;
+        Debug.Log("Redirection stopped at joint: " + currentJoint.getLabel() + ", intersection: " + currentIntersection.getLabel());
     }
 
-    Vector2 switchDimensions(Vector3 vector)
+    /*
+     * Switches a 3-dimensional vector to a 2-dimensional vector by removing the y coordinate.
+     * */ 
+    private Vector2 switchDimensions(Vector3 vector)
     {
         return new Vector2(vector.x, vector.z);
-    }
-
-    void OnDrawGizmos()
-    {
-        if (showGizmos)
-        {
-            // Real world circles
-            Gizmos.color = Color.red;
-            Gizmos.DrawSphere(jointPointA.getPosition(), 1f);
-            Gizmos.DrawWireSphere(curveABsmallRadius.getCircleCenter(), curveABsmallRadius.getRadius());
-            Gizmos.DrawWireSphere(curveABlargeRadius.getCircleCenter(), curveABlargeRadius.getRadius());
-            Gizmos.DrawSphere(jointPointB.getPosition(), 1f);
-            Gizmos.DrawWireSphere(curveBCsmallRadius.getCircleCenter(), curveBCsmallRadius.getRadius());
-            Gizmos.DrawWireSphere(curveBClargeRadius.getCircleCenter(), curveBClargeRadius.getRadius());
-            Gizmos.DrawSphere(jointPointC.getPosition(), 1f);
-            Gizmos.DrawWireSphere(curveACsmallRadius.getCircleCenter(), curveACsmallRadius.getRadius());
-            Gizmos.DrawWireSphere(curveAClargeRadius.getCircleCenter(), curveAClargeRadius.getRadius());
-
-            // Virtual world circles
-            //Gizmos.color = Color.green;
-            //Gizmos.DrawSphere(pos1, 1f);
-            //Gizmos.DrawWireSphere(circleCenter1, 3.75f);
-        }
     }
 }
