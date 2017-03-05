@@ -61,6 +61,8 @@ public class PathGeneratorWindow : EditorWindow {
         {
             Debug.Log("Created new data resource");
             data = CreateInstance<RedirectionDataStructure>();
+            if (!AssetDatabase.IsValidFolder("Assets/Resources/"))
+                AssetDatabase.CreateFolder("Assets", "Resources");
             AssetDatabase.CreateAsset(data, "Assets/Resources/data.asset");
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
