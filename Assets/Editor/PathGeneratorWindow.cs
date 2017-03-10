@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -44,7 +44,7 @@ public class PathGeneratorWindow : EditorWindow {
      * */
     private void OnEnable()
     {
-        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets\Resources\data.asset", typeof(RedirectionDataStructure));
+        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets/Resources/data.asset", typeof(RedirectionDataStructure));
         gain = EditorPrefs.GetFloat("gain", gain);
         sideLength = EditorPrefs.GetFloat("sideLength", sideLength);
         intersectionIndex = EditorPrefs.GetInt("intersectionIndex", intersectionIndex);
