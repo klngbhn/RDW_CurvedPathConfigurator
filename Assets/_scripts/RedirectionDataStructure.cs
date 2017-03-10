@@ -37,6 +37,12 @@ public class RedirectionDataStructure : ScriptableObject
 
         if (paths == null)
             paths = new List<VirtualPath>();
+
+        if (jointPointA == null)
+        {
+            intersections = new List<VirtualIntersection>();
+            paths = new List<VirtualPath>();
+        }
     }
 
     /*
