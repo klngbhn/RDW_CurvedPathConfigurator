@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -207,7 +207,8 @@ public class Redirection : MonoBehaviour {
 
         // Calculate and set virtual rotation: redirection + current camera rotation + old rotation
         float redirection = Mathf.Rad2Deg * -redirectionDirection * (angleWalkedOnRealCircle - angleWalkedOnVirtualCircle);
-        Quaternion virtualRotation = Quaternion.Euler(realWorldCurrentRotation.eulerAngles.x, redirection + realWorldCurrentRotation.eulerAngles.y + oldRotation, realWorldCurrentRotation.eulerAngles.z);
+        float y = redirection + realWorldCurrentRotation.eulerAngles.y + oldRotation;
+        Quaternion virtualRotation = Quaternion.Euler(realWorldCurrentRotation.eulerAngles.x, y, realWorldCurrentRotation.eulerAngles.z);
         this.transform.rotation = virtualRotation;
     }
 
