@@ -27,7 +27,7 @@ public class Redirection : MonoBehaviour {
 
     void Start() {
         // Load data structure object (created by tool) from disk
-        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets\Resources\data.asset", typeof(RedirectionDataStructure));
+        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets/Resources/data.asset", typeof(RedirectionDataStructure));
         if (data != null)
         {
             currentIntersection = data.intersections[0];
