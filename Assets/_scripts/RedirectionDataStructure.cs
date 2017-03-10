@@ -1,4 +1,4 @@
-﻿using System.Collections;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
@@ -118,20 +118,8 @@ public class RedirectionDataStructure : ScriptableObject
         // Calculate end joint point
         JointPoint endJointPoint = getCorrespondingEndJointPoint(startIntersection, curve);
 
-        Vector3 circleCenter = new Vector3();
-        // Check if the start intersection is the start joint. Then,
-        // we can use the curve circle center for calculating the path circle center.
-        if (startIntersection.getJoint().Equals(startJoint))
-        {
-            // Calculate the direction vector to the circle center of the new path and then the circle center position itself
-            Vector3 directionToCircleCenter = (curve.getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-            circleCenter = startIntersection.getPosition() + directionToCircleCenter;
-        }
-        else
-        {
-            // Otherwise we have to do a more complex calculation
-            circleCenter = calculateCircleCenterOfPath(startIntersection, curve, radius);
-        }
+        // Calculate the circle center of the new path
+        Vector3 circleCenter = calculateCircleCenterOfPath(startIntersection, curve, radius);
 
         // Calculate (nomralized) direction vector from circle center to start intersection
         Vector3 directionToStartIntersection = (startIntersection.getPosition() - circleCenter).normalized;
@@ -202,7 +190,7 @@ public class RedirectionDataStructure : ScriptableObject
                     result = startIntersection.getPosition() + rotatedDirectionVector * radius;
                     break;
                 }
-                break;
+                goto default;
             case 1:
                 if (startIntersection.getPath(0) != null)
                 {
@@ -227,7 +215,7 @@ public class RedirectionDataStructure : ScriptableObject
                     result = startIntersection.getPosition() + directionToNewPathCircleCenter;
                     break;
                 }
-                break;
+                goto default;
             case 2:
                 if (startIntersection.getPath(0) != null)
                 {
@@ -252,7 +240,7 @@ public class RedirectionDataStructure : ScriptableObject
                     result = startIntersection.getPosition() + rotatedDirectionVector * radius;
                     break;
                 }
-                break;
+                goto default;
             case 3:
                 if (startIntersection.getPath(1) != null)
                 {
@@ -277,6 +265,13 @@ public class RedirectionDataStructure : ScriptableObject
                     result = startIntersection.getPosition() + rotatedDirectionVector * radius;
                     break;
                 }
+                goto default;
+            default:
+                // If no case was chosen this is the start joint. Then,
+                // we can use the curve circle center for calculating the path circle center.
+                // Calculate the direction vector to the circle center of the new path and then the circle center position itself
+                Vector3 directionToCircleCenter = (curve.getCircleCenter() - startIntersection.getPosition()).normalized * radius;
+                result = startIntersection.getPosition() + directionToCircleCenter;
                 break;
         }
         
