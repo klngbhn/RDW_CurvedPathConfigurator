@@ -1,6 +1,5 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
-using UnityEditor;
 using UnityEngine;
 
 /*
@@ -26,10 +25,12 @@ public class Redirection : MonoBehaviour {
     private float oldRotation = 0;
 
     void Start() {
+        Debug.Log("Application started");
         // Load data structure object (created by tool) from disk
-        data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets/Resources/data.asset", typeof(RedirectionDataStructure));
+        data = (RedirectionDataStructure)Resources.LoadAll("data")[0] as RedirectionDataStructure;
         if (data != null)
         {
+            //Debug.Log("Label: " + data.jointPointA.getLabel());
             currentIntersection = data.intersections[0];
             currentJoint = currentIntersection.getJoint();
         }
@@ -56,12 +57,14 @@ public class Redirection : MonoBehaviour {
 
             // if user reaches one of the endpoints of current path
             //      stop redirection
-            // TODO: Right now, redirection stops only at the end point, not at the start point
-            Vector2 userPosition = switchDimensions(Camera.main.transform.position);
-            Vector2 intersectionCenter = switchDimensions(currentPath.getOtherIntersection(currentIntersection).getPosition());
-            float distance = Vector2.Distance(userPosition, intersectionCenter);
-            if (distance < 0.25f)
-                stopRedirection();
+
+            // Is user stopping at end intersection?
+            if (isPathLeft(currentPath.getOtherIntersection(currentIntersection)))
+                stopRedirection(currentPath.getOtherIntersection(currentIntersection), true);
+
+            // Is user stopping at start intersection?
+            if (isPathLeft(currentIntersection))
+                stopRedirection(currentIntersection, false);
         }
         else if(ready)
         {
@@ -91,6 +94,21 @@ public class Redirection : MonoBehaviour {
 
         }
             
+    }
+
+    /*
+     * Checks if user reached an intersection.
+     * */
+    private bool isPathLeft(VirtualIntersection intersection)
+    {
+        int direction = getRedirectionDirection(intersection.getJoint(), currentPath.getCurve());
+        Vector3 directionToPathCircleCenter = (currentPath.getCircleCenter() - intersection.getPosition()).normalized;
+        Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToPathCircleCenter;
+        Vector3 planePosition = intersection.getPosition() + rotatedDirectionVector * 0.25f;
+        Plane plane = new Plane(rotatedDirectionVector.normalized, planePosition);
+        if (plane.GetSide(Camera.main.transform.position))
+            return false;
+        return true;
     }
 
     /*
@@ -213,14 +231,16 @@ public class Redirection : MonoBehaviour {
     }
 
     /*
-     * Stops the redirection.
+     * Stops the redirection at the given intersection.
      * Sets current intersection and current joint to the next point.
+     * If this intersection is not the same intersection the user started, the rotation angle is added (bool addAngle).
      * */
-    private void stopRedirection()
+    private void stopRedirection(VirtualIntersection intersection, bool addAngle)
     {
-        currentIntersection = currentPath.getOtherIntersection(currentIntersection);
+        currentIntersection = intersection; 
         currentJoint = currentIntersection.getJoint();
-        oldRotation += currentPath.getAngle() * -redirectionDirection;
+        if (addAngle)
+            oldRotation += currentPath.getAngle() * -redirectionDirection;
         redirectionStarted = false;
         Debug.Log("Redirection stopped at joint: " + currentJoint.getLabel() + ", intersection: " + currentIntersection.getLabel());
     }

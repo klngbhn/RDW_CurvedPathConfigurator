@@ -1,4 +1,4 @@
-# RDW_Demo
+# RDW_CurvedPathConfigurator
 
 This is a small tool that helps you to create virtual path layouts for curve-based redirected walking in virtual reality inside the unity3d editor. 
 It is created by Eike Langbehn from the human-computer interaction group of Hamburg University and published under the MIT license.

@@ -23,11 +23,6 @@ public class VirtualPath : ScriptableObject
     [SerializeField]
     private Curve curve;
 
-    public void OnEnable()
-    {
-        hideFlags = HideFlags.HideAndDontSave;
-    }
-
     public void init (Vector3 circleCenter, float gain, Curve curve, List<VirtualIntersection> endPoints)
     {
         this.circleCenter = circleCenter;

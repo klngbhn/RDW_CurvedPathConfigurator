@@ -19,11 +19,6 @@ public class VirtualIntersection : ScriptableObject
     [SerializeField]
     private string label;
 
-    public void OnEnable()
-    {
-        hideFlags = HideFlags.HideAndDontSave;
-    }
-
     public void init(Vector3 position, JointPoint jointPoint, string label)
     {
         this.position = position;

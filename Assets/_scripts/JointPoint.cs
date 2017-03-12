@@ -15,11 +15,6 @@ public class JointPoint : ScriptableObject
     [SerializeField]
     private string label;
 
-    public void OnEnable()
-    {
-        hideFlags = HideFlags.HideAndDontSave;
-    }
-
     public void init(Vector3 position, string label)
     {
         this.position = position;

@@ -19,11 +19,6 @@ public class Curve : ScriptableObject
     [SerializeField]
     private List<JointPoint> endPoints;
 
-    public void OnEnable()
-    {
-        hideFlags = HideFlags.HideAndDontSave;
-    }
-
     public void init(Vector3 circleCenter, float radius, List<JointPoint> endPoints)
     {
         this.circleCenter = circleCenter;

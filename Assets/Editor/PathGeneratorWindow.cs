@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEditor;
@@ -141,20 +141,14 @@ public class PathGeneratorWindow : EditorWindow {
 
         if (GUILayout.Button("Reset all", GUILayout.Width(100)))
         {
+            Debug.Log("Created new data resource");
+            AssetDatabase.DeleteAsset("Assets/Resources/data.asset");
+            data = CreateInstance<RedirectionDataStructure>();
+            if (!AssetDatabase.IsValidFolder("Assets/Resources/"))
+                AssetDatabase.CreateFolder("Assets", "Resources");
+            AssetDatabase.CreateAsset(data, "Assets/Resources/data.asset");
             intersectionIndex = 0;
             curveIndex = 0;
-            data.intersections = new List<VirtualIntersection>();
-            data.paths = new List<VirtualPath>();
-            data.startJoint = null;
-            data.jointPointA = null;
-            data.jointPointB = null;
-            data.jointPointC = null;
-            data.curveABlargeRadius = null;
-            data.curveABsmallRadius = null;
-            data.curveAClargeRadius = null;
-            data.curveACsmallRadius = null;
-            data.curveBClargeRadius = null;
-            data.curveBCsmallRadius = null;
             hideJointsGui = false;
             jointAPosition = new Vector3(0.55f, 0, -1.25f);
             jointBPosition = new Vector3(0.55f, 0, 1.25f);

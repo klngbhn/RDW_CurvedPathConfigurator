@@ -1,6 +1,8 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
+#if UNITY_EDITOR
 using UnityEditor;
+#endif
 using UnityEngine;
 
 /*
@@ -59,6 +61,14 @@ public class RedirectionDataStructure : ScriptableObject
         jointPointB.init(jointBPosition, "B");
         jointPointC = CreateInstance<JointPoint>();
         jointPointC.init(jointCPosition, "C");
+#if UNITY_EDITOR
+        AssetDatabase.AddObjectToAsset(jointPointA, this);
+        AssetDatabase.AddObjectToAsset(jointPointB, this);
+        AssetDatabase.AddObjectToAsset(jointPointC, this);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+#endif
 
         // Specify curves with small radii (real world)
         curveABsmallRadius = createSmallCurve(jointPointA, jointPointB);
@@ -70,8 +80,9 @@ public class RedirectionDataStructure : ScriptableObject
         curveAClargeRadius = createLargeCurve(jointPointA, jointPointC, jointPointB);
         curveBClargeRadius = createLargeCurve(jointPointB, jointPointC, jointPointA);
 
+#if UNITY_EDITOR
         SceneView.RepaintAll();
-
+#endif
         Debug.Log("Initialized joints and curves");
     }
 
@@ -87,6 +98,13 @@ public class RedirectionDataStructure : ScriptableObject
         endPoints.Add(joint2);
         Curve curve = CreateInstance<Curve>();
         curve.init(circleCenter, radius, endPoints);
+
+#if UNITY_EDITOR
+        AssetDatabase.AddObjectToAsset(curve, this);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+#endif
 
         return curve;
     }
@@ -105,6 +123,13 @@ public class RedirectionDataStructure : ScriptableObject
         endPoints.Add(joint2);
         Curve curve = CreateInstance<Curve>();
         curve.init(circleCenter, radius, endPoints);
+
+#if UNITY_EDITOR
+        AssetDatabase.AddObjectToAsset(curve, this);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+#endif
 
         return curve;
     }
@@ -155,7 +180,14 @@ public class RedirectionDataStructure : ScriptableObject
         startIntersection.addPath(path, this.getPathIndex(startIntersection.getJoint(), curve));
         endIntersection.addPath(path, this.getPathIndex(endJointPoint, curve));
 
+#if UNITY_EDITOR
         SceneView.RepaintAll();
+        AssetDatabase.AddObjectToAsset(endIntersection, this);
+        AssetDatabase.AddObjectToAsset(path, this);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+#endif
         Debug.Log("Created new path and intersection");
     }
 
@@ -413,7 +445,13 @@ public class RedirectionDataStructure : ScriptableObject
         intersection.init(joint.getPosition(), joint, "" + intersections.Count);
         intersections.Add(intersection);
 
+#if UNITY_EDITOR
         SceneView.RepaintAll();
+        AssetDatabase.AddObjectToAsset(intersection, this);
+        EditorUtility.SetDirty(this);
+        AssetDatabase.SaveAssets();
+        AssetDatabase.Refresh();
+#endif
         Debug.Log("Set new start position");
     }
 }
