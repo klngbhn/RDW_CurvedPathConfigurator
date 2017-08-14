@@ -17,6 +17,8 @@ public class VirtualIntersection : ScriptableObject
     [SerializeField]
     private VirtualPath[] paths;
     [SerializeField]
+    private Vector3[] walkingStartPositions;
+    [SerializeField]
     private string label;
 
     public void init(Vector3 position, JointPoint jointPoint, string label)
@@ -25,6 +27,7 @@ public class VirtualIntersection : ScriptableObject
         this.jointPoint = jointPoint;
         this.label = label;
         this.paths = new VirtualPath[4];
+        this.walkingStartPositions = new Vector3[4];
     }
 
     public Vector3 getPosition()
@@ -51,5 +54,15 @@ public class VirtualIntersection : ScriptableObject
     public VirtualPath getPath(int direction)
     {
         return paths[direction];
+    }
+
+    public void setWalkingStartPosition(int curveIndex, Vector3 position)
+    {
+        this.walkingStartPositions[curveIndex] = position;
+    }
+
+    public Vector3 getWalkingStartPosition(int curveIndex)
+    {
+        return this.walkingStartPositions[curveIndex];
     }
 }

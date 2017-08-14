@@ -23,22 +23,14 @@ public class VirtualPath : ScriptableObject
     [SerializeField]
     private Curve curve;
 
-    public void init (Vector3 circleCenter, float gain, Curve curve, List<VirtualIntersection> endPoints)
+    public void init (Vector3 circleCenter, float gain, Curve curve, List<VirtualIntersection> endPoints, float radius, float angle)
     {
         this.circleCenter = circleCenter;
         this.gain = gain;
-        this.radius = curve.getRadius() * this.gain;
+        this.radius = radius;
         this.curve = curve;
         this.endPoints = endPoints;
-        this.angle = calculateAngle();
-    }
-
-    private float calculateAngle()
-    {
-        Vector3 directionVector1 = endPoints[0].getPosition() - circleCenter;
-        Vector3 directionVector2 = endPoints[1].getPosition() - circleCenter;
-
-        return Vector3.Angle(directionVector1, directionVector2);
+        this.angle = angle;
     }
 
     public Vector3 getCircleCenter()

@@ -52,15 +52,15 @@ public class RedirectionDataStructure : ScriptableObject
      * it might be comfortable to automatically generate the positions by using the size of the 
      * tracking space.
      * */
-    public void initJointsAndCurves(Vector3 jointAPosition, Vector3 jointBPosition, Vector3 jointCPosition)
+	public void initJointsAndCurves(Vector3 jointAPosition, Vector3 jointBPosition, Vector3 jointCPosition, float walkingZoneRadius)
     {
         // Set three joint points (real world)
         jointPointA = CreateInstance<JointPoint>();
-        jointPointA.init(jointAPosition, "A");
+		jointPointA.init(jointAPosition, "A", walkingZoneRadius);
         jointPointB = CreateInstance<JointPoint>();
-        jointPointB.init(jointBPosition, "B");
+		jointPointB.init(jointBPosition, "B", walkingZoneRadius);
         jointPointC = CreateInstance<JointPoint>();
-        jointPointC.init(jointCPosition, "C");
+		jointPointC.init(jointCPosition, "C", walkingZoneRadius);
 #if UNITY_EDITOR
         AssetDatabase.AddObjectToAsset(jointPointA, this);
         AssetDatabase.AddObjectToAsset(jointPointB, this);
@@ -72,12 +72,12 @@ public class RedirectionDataStructure : ScriptableObject
 
         // Specify curves with small radii (real world)
         curveABsmallRadius = createSmallCurve(jointPointA, jointPointB);
-        curveACsmallRadius = createSmallCurve(jointPointA, jointPointC);
+        curveACsmallRadius = createSmallCurve(jointPointC, jointPointA);
         curveBCsmallRadius = createSmallCurve(jointPointB, jointPointC);
 
         // Specify curves with large radii (real world)
         curveABlargeRadius = createLargeCurve(jointPointA, jointPointB, jointPointC);
-        curveAClargeRadius = createLargeCurve(jointPointA, jointPointC, jointPointB);
+        curveAClargeRadius = createLargeCurve(jointPointC, jointPointA, jointPointB);
         curveBClargeRadius = createLargeCurve(jointPointB, jointPointC, jointPointA);
 
 #if UNITY_EDITOR
@@ -87,17 +87,18 @@ public class RedirectionDataStructure : ScriptableObject
     }
 
     /*
-     * Creates a curve from joint1 to joint2 with the center between both points.
+     * Creates a curve from joint1 to joint2 with the center between both points (plus offset for real walking area at joint point).
      * */
     private Curve createSmallCurve(JointPoint joint1, JointPoint joint2)
     {
-        Vector3 circleCenter = Vector3.Lerp(joint1.getPosition(), joint2.getPosition(), 0.5f);
+		Vector3 circleCenter = Vector3.Lerp(joint1.getPosition(), joint2.getPosition(), 0.5f);
+
         float radius = 0.5f * Vector3.Magnitude(joint1.getPosition() - joint2.getPosition());
         List<JointPoint> endPoints = new List<JointPoint>();
         endPoints.Add(joint1);
         endPoints.Add(joint2);
         Curve curve = CreateInstance<Curve>();
-        curve.init(circleCenter, radius, endPoints);
+        curve.init(circleCenter, radius, endPoints, true);
 
 #if UNITY_EDITOR
         AssetDatabase.AddObjectToAsset(curve, this);
@@ -114,7 +115,7 @@ public class RedirectionDataStructure : ScriptableObject
      * */
     private Curve createLargeCurve(JointPoint joint1, JointPoint joint2, JointPoint joint3)
     {
-        Vector3 circleCenter = joint3.getPosition();
+		Vector3 circleCenter = joint3.getPosition();
         
         float radius = Vector3.Magnitude(joint1.getPosition() - joint2.getPosition());
         
@@ -122,7 +123,7 @@ public class RedirectionDataStructure : ScriptableObject
         endPoints.Add(joint1);
         endPoints.Add(joint2);
         Curve curve = CreateInstance<Curve>();
-        curve.init(circleCenter, radius, endPoints);
+        curve.init(circleCenter, radius, endPoints, false);
 
 #if UNITY_EDITOR
         AssetDatabase.AddObjectToAsset(curve, this);
@@ -146,6 +147,8 @@ public class RedirectionDataStructure : ScriptableObject
         // Calculate angle of virtual path
         float angle = Mathf.Rad2Deg * (length / radius);
 
+        int newPathIndex = this.getPathIndex(startIntersection.getJoint(), curve);
+
         // Calculate end joint point
         JointPoint endJointPoint = getCorrespondingEndJointPoint(startIntersection, curve);
 
@@ -153,32 +156,37 @@ public class RedirectionDataStructure : ScriptableObject
         Vector3 circleCenter = calculateCircleCenterOfPath(startIntersection, curve, radius);
 
         // Calculate (nomralized) direction vector from circle center to start intersection
-        Vector3 directionToStartIntersection = (startIntersection.getPosition() - circleCenter).normalized;
+		Vector3 directionToStartPath = (startIntersection.getWalkingStartPosition(newPathIndex) - circleCenter).normalized;
 
         // Calculate direction vector from circle center to end intersection by: 
-        // 1. rotating the direction vector to start intersection
+        // 1. rotating the direction vector to start intersection (around angle of path and angle of walking zone)
         // 2. extending the vector by the virtual radius
-        Vector3 directionToEndIntersection = Quaternion.AngleAxis(this.getSignOfCurve(startIntersection.getJoint(), endJointPoint) * angle, Vector3.up) * directionToStartIntersection;
-        directionToEndIntersection = directionToEndIntersection * radius;
+        float angleOfWalkingZone = Mathf.Rad2Deg * startIntersection.getJoint().getWalkingZoneRadius() / radius;
+        Vector3 directionToEndPath = Quaternion.AngleAxis(this.getSignOfCurve(startIntersection.getJoint(), endJointPoint) * angle, Vector3.up) * directionToStartPath;
+        directionToEndPath = directionToEndPath * radius;
+
+        Vector3 directionToEndIntersection = Quaternion.AngleAxis(this.getSignOfCurve(startIntersection.getJoint(), endJointPoint) * angleOfWalkingZone, Vector3.up) * directionToEndPath;
 
         // Calculate position of new end intersection
-        Vector3 position = circleCenter + directionToEndIntersection;
+        Vector3 positionEndIntersection = circleCenter + directionToEndIntersection; 
 
         VirtualIntersection endIntersection = CreateInstance<VirtualIntersection>();
-        endIntersection.init(position, endJointPoint, ""+intersections.Count);
+        endIntersection.init(positionEndIntersection, endJointPoint, ""+intersections.Count);
 
         List<VirtualIntersection> endPoints = new List<VirtualIntersection>();
         endPoints.Add(startIntersection);
         endPoints.Add(endIntersection);
 
         VirtualPath path = CreateInstance<VirtualPath>();
-        path.init(circleCenter, gain, curve, endPoints);
+        path.init(circleCenter, gain, curve, endPoints, radius, angle);
 
         intersections.Add(endIntersection);
         paths.Add(path);
 
         startIntersection.addPath(path, this.getPathIndex(startIntersection.getJoint(), curve));
         endIntersection.addPath(path, this.getPathIndex(endJointPoint, curve));
+
+        calculateWalkingStartPositions(this.getPathIndex(endJointPoint, curve), endJointPoint, endIntersection, circleCenter, directionToEndPath);
 
 #if UNITY_EDITOR
         SceneView.RepaintAll();
@@ -192,127 +200,122 @@ public class RedirectionDataStructure : ScriptableObject
     }
 
     /*
+     * Calculates walking start positions for new intersection
+     * */
+    private void calculateWalkingStartPositions(int pathIndex, JointPoint endJointPoint, VirtualIntersection endIntersection, Vector3 circleCenter, Vector3 directionToEndPath)
+    {
+        endIntersection.setWalkingStartPosition(pathIndex, circleCenter + directionToEndPath);
+
+        Vector3 directionToCurve0 = endJointPoint.getWalkingStartPosition(0) - endJointPoint.getPosition();
+        Vector3 directionToCurve1 = endJointPoint.getWalkingStartPosition(1) - endJointPoint.getPosition();
+        Vector3 directionToCurve2 = endJointPoint.getWalkingStartPosition(2) - endJointPoint.getPosition();
+        Vector3 directionToCurve3 = endJointPoint.getWalkingStartPosition(3) - endJointPoint.getPosition();
+
+        float angleBetweenCurves01 = angle360(directionToCurve0, directionToCurve1);
+        float angleBetweenCurves02 = angle360(directionToCurve0, directionToCurve2);
+        float angleBetweenCurves03 = angle360(directionToCurve0, directionToCurve3);
+
+        float angleBetweenCurves12 = angle360(directionToCurve1, directionToCurve2);
+        float angleBetweenCurves13 = angle360(directionToCurve1, directionToCurve3);
+        float angleBetweenCurves10 = angle360(directionToCurve1, directionToCurve0);
+
+        float angleBetweenCurves23 = angle360(directionToCurve2, directionToCurve3);
+        float angleBetweenCurves20 = angle360(directionToCurve2, directionToCurve0);
+        float angleBetweenCurves21 = angle360(directionToCurve2, directionToCurve1);
+
+        float angleBetweenCurves30 = angle360(directionToCurve3, directionToCurve0);
+        float angleBetweenCurves31 = angle360(directionToCurve3, directionToCurve1);
+        float angleBetweenCurves32 = angle360(directionToCurve3, directionToCurve2);
+
+        Vector3 directionToFirstStartPosition = (circleCenter + directionToEndPath) - endIntersection.getPosition();
+        Vector3 directionToOtherStartPosition = new Vector3();
+
+        switch (pathIndex)
+        {
+            case 0:
+                endIntersection.setWalkingStartPosition(0, circleCenter + directionToEndPath);
+
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves01, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(1, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves02, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(2, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves03, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(3, endIntersection.getPosition() + directionToOtherStartPosition);
+                break;
+            case 1:
+                endIntersection.setWalkingStartPosition(1, circleCenter + directionToEndPath);
+
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves12, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(2, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves13, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(3, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves10, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(0, endIntersection.getPosition() + directionToOtherStartPosition);
+                break;
+            case 2:
+                endIntersection.setWalkingStartPosition(2, circleCenter + directionToEndPath);
+
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves23, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(3, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves20, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(0, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves21, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(1, endIntersection.getPosition() + directionToOtherStartPosition);
+                break;
+            case 3:
+                endIntersection.setWalkingStartPosition(3, circleCenter + directionToEndPath);
+
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves30, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(0, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves31, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(1, endIntersection.getPosition() + directionToOtherStartPosition);
+                directionToOtherStartPosition = Quaternion.AngleAxis(angleBetweenCurves32, Vector3.up) * directionToFirstStartPosition;
+                endIntersection.setWalkingStartPosition(2, endIntersection.getPosition() + directionToOtherStartPosition);
+                break;
+        }
+    }
+
+    /*
+     * Returns the angle between from and to in 360 degrees clockwise.
+     * */
+    private float angle360(Vector3 from, Vector3 to)
+    {
+        Vector3 right = Vector3.Cross(Vector3.up, from);
+        float angle = Vector3.Angle(from, to);
+        return (Vector3.Angle(right, to) > 90f) ? 360f - angle : angle;
+    }
+
+    /*
      * Returns the circle center position of the new path that starts at given intersection and uses given curve and radius.
      * */
     private Vector3 calculateCircleCenterOfPath(VirtualIntersection startIntersection, Curve curve, float radius)
     {
-        Vector3 result = new Vector3();
         int newPathIndex = this.getPathIndex(startIntersection.getJoint(), curve);
 
+        Vector3 directionToCurveCircleCenter = (curve.getCircleCenter() - startIntersection.getJoint().getWalkingStartPosition(newPathIndex)).normalized;
+        Vector3 directionToPathCircleCenter = new Vector3();
+
         // Check which paths are connected to the intersection and pick one (first) for calculation.
-        // New path circle center can be calculated by using the direction to the old path circle center.
-        // In some cases it is necessary to rotate this direction vector by 90 (left) or -90 (right) degrees.
-        switch (newPathIndex)
+        // New path circle center can be calculated by using the direction to the curve circle center and rotating it.
+        for (int i = 0; i < 4; i++)
         {
-            case 0:
-                if (startIntersection.getPath(1) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(1).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                if (startIntersection.getPath(2) != null)
-                {
-                    // Opposite path: Just calculate direction from intersection to old path circle center and multiply new radius
-                    Vector3 directionToNewPathCircleCenter = (startIntersection.getPath(2).getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-                    result = startIntersection.getPosition() + directionToNewPathCircleCenter;
-                    break;
-                }
-                if (startIntersection.getPath(3) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(3).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                goto default;
-            case 1:
-                if (startIntersection.getPath(0) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(0).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                if (startIntersection.getPath(2) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(2).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                if (startIntersection.getPath(3) != null)
-                {
-                    // Opposite path: Just calculate direction from intersection to old path circle center and multiply new radius
-                    Vector3 directionToNewPathCircleCenter = (startIntersection.getPath(3).getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-                    result = startIntersection.getPosition() + directionToNewPathCircleCenter;
-                    break;
-                }
-                goto default;
-            case 2:
-                if (startIntersection.getPath(0) != null)
-                {
-                    // Opposite path: Just calculate direction from intersection to old path circle center and multiply new radius
-                    Vector3 directionToNewPathCircleCenter = (startIntersection.getPath(0).getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-                    result = startIntersection.getPosition() + directionToNewPathCircleCenter;
-                    break;
-                }
-                if (startIntersection.getPath(1) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(1).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                if (startIntersection.getPath(3) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(3).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                goto default;
-            case 3:
-                if (startIntersection.getPath(1) != null)
-                {
-                    // Opposite path: Just calculate direction from intersection to old path circle center and multiply new radius
-                    Vector3 directionToNewPathCircleCenter = (startIntersection.getPath(1).getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-                    result = startIntersection.getPosition() + directionToNewPathCircleCenter;
-                    break;
-                }
-                if (startIntersection.getPath(2) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(2).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                if (startIntersection.getPath(0) != null)
-                {
-                    // Calculate direction from intersection to old path circle center and rotate it by 90 degrees
-                    Vector3 directionToOldPathCircleCenter = (startIntersection.getPath(0).getCircleCenter() - startIntersection.getPosition()).normalized;
-                    Vector3 rotatedDirectionVector = Quaternion.AngleAxis(90f, Vector3.up) * directionToOldPathCircleCenter;
-                    result = startIntersection.getPosition() + rotatedDirectionVector * radius;
-                    break;
-                }
-                goto default;
-            default:
-                // If no case was chosen this is the start joint. Then,
-                // we can use the curve circle center for calculating the path circle center.
-                // Calculate the direction vector to the circle center of the new path and then the circle center position itself
-                Vector3 directionToCircleCenter = (curve.getCircleCenter() - startIntersection.getPosition()).normalized * radius;
-                result = startIntersection.getPosition() + directionToCircleCenter;
+            if (startIntersection.getPath(i) != null)
+            {
+                Vector3 directionToStartWalkingPosOnPath = (startIntersection.getWalkingStartPosition(i) - startIntersection.getPosition()).normalized;
+                Vector3 directionToStartWalkingPosOnCurve = (startIntersection.getJoint().getWalkingStartPosition(i) - startIntersection.getJoint().getPosition()).normalized;
+                float angle = -angle360(directionToStartWalkingPosOnPath, directionToStartWalkingPosOnCurve);
+                directionToPathCircleCenter = Quaternion.AngleAxis(angle, Vector3.up) * directionToCurveCircleCenter;
                 break;
+            }
+            if (i == 3)
+            {
+                // If no case was chosen this is the start joint. Then,
+                // we can use the curve circle center for calculating the path circle center without rotating.
+                directionToPathCircleCenter = directionToCurveCircleCenter;
+            }
         }
-        
+
+        Vector3 result = startIntersection.getWalkingStartPosition(newPathIndex) + directionToPathCircleCenter.normalized * radius;
 
         return result;
     }
@@ -322,7 +325,7 @@ public class RedirectionDataStructure : ScriptableObject
      * 0 index is always the curve with large radius to the next joint (e.g. A to B, B to C).
      * Then index is increasing clockwise.
      * */
-    private int getPathIndex(JointPoint joint, Curve curve)
+    public int getPathIndex(JointPoint joint, Curve curve)
     {
         if (joint.Equals(jointPointA))
         {
@@ -444,6 +447,11 @@ public class RedirectionDataStructure : ScriptableObject
         VirtualIntersection intersection = CreateInstance<VirtualIntersection>();
         intersection.init(joint.getPosition(), joint, "" + intersections.Count);
         intersections.Add(intersection);
+
+        intersection.setWalkingStartPosition(0, joint.getWalkingStartPosition(0));
+        intersection.setWalkingStartPosition(1, joint.getWalkingStartPosition(1));
+        intersection.setWalkingStartPosition(2, joint.getWalkingStartPosition(2));
+        intersection.setWalkingStartPosition(3, joint.getWalkingStartPosition(3));
 
 #if UNITY_EDITOR
         SceneView.RepaintAll();

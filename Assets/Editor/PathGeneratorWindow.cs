@@ -30,6 +30,8 @@ public class PathGeneratorWindow : EditorWindow {
     private bool generateAutomatically = false;
     private Vector2 scrollPos;
     private float sideLength = 4;
+	private float safetyDistance = 0.5f;
+	private float walkingZoneRadius = 0.25f;
 
     [MenuItem("Window/Path Generator")]
 
@@ -47,6 +49,8 @@ public class PathGeneratorWindow : EditorWindow {
         data = (RedirectionDataStructure)AssetDatabase.LoadAssetAtPath(@"Assets/Resources/data.asset", typeof(RedirectionDataStructure));
         gain = EditorPrefs.GetFloat("gain", gain);
         sideLength = EditorPrefs.GetFloat("sideLength", sideLength);
+		safetyDistance = EditorPrefs.GetFloat("safetyDistance", safetyDistance);
+		walkingZoneRadius = EditorPrefs.GetFloat("walkingRadius", walkingZoneRadius);
         intersectionIndex = EditorPrefs.GetInt("intersectionIndex", intersectionIndex);
         curveIndex = EditorPrefs.GetInt("curveIndex", curveIndex);
         joint = EditorPrefs.GetInt("joint", joint);
@@ -61,7 +65,7 @@ public class PathGeneratorWindow : EditorWindow {
         {
             Debug.Log("Created new data resource");
             data = CreateInstance<RedirectionDataStructure>();
-            if (!AssetDatabase.IsValidFolder("Assets/Resources/"))
+            if (!AssetDatabase.IsValidFolder("Assets/Resources"))
                 AssetDatabase.CreateFolder("Assets", "Resources");
             AssetDatabase.CreateAsset(data, "Assets/Resources/data.asset");
             AssetDatabase.SaveAssets();
@@ -69,6 +73,8 @@ public class PathGeneratorWindow : EditorWindow {
 
             gain = 2;
             sideLength = 4;
+			safetyDistance = 0.5f;
+			walkingZoneRadius = 0.25f;
             intersectionIndex = 0;
             curveIndex = 0;
             joint = 0;
@@ -88,6 +94,8 @@ public class PathGeneratorWindow : EditorWindow {
     {
         EditorPrefs.SetFloat("gain", gain);
         EditorPrefs.SetFloat("sideLength", sideLength);
+		EditorPrefs.SetFloat("safetyDistance", safetyDistance);
+		EditorPrefs.SetFloat("walkingRadius", walkingZoneRadius);
         EditorPrefs.SetInt("intersectionIndex", intersectionIndex);
         EditorPrefs.SetInt("curveIndex", curveIndex);
         EditorPrefs.SetInt("joint", joint);
@@ -169,6 +177,8 @@ public class PathGeneratorWindow : EditorWindow {
         if (!generateAutomatically)
             GUI.enabled = false;
         sideLength = EditorGUILayout.FloatField("Side length", sideLength, GUILayout.Width(200));
+		safetyDistance = EditorGUILayout.FloatField("Safety distance", safetyDistance, GUILayout.Width(200));
+		walkingZoneRadius = EditorGUILayout.FloatField("Walking zone radius (at joints)", walkingZoneRadius, GUILayout.Width(200));
         GUI.enabled = true;
 
         if (generateAutomatically)
@@ -185,11 +195,11 @@ public class PathGeneratorWindow : EditorWindow {
             hideJointsGui = true;
             if (generateAutomatically)
             {
-                calculateJointPositions(sideLength, 0.2f);
-                data.initJointsAndCurves(jointAPosition, jointBPosition, jointCPosition);
+				calculateJointPositions(sideLength, safetyDistance);
+				data.initJointsAndCurves(jointAPosition, jointBPosition, jointCPosition, walkingZoneRadius);
             }
             else
-                data.initJointsAndCurves(jointAPosition, jointBPosition, jointCPosition);
+				data.initJointsAndCurves(jointAPosition, jointBPosition, jointCPosition, walkingZoneRadius);
             this.saveChanges();
         }
         GUI.enabled = true;
@@ -217,7 +227,7 @@ public class PathGeneratorWindow : EditorWindow {
             this.saveChanges();
         }
 
-        if (intersectionIndex > data.intersections.Count)
+        if (intersectionIndex >= data.intersections.Count)
             intersectionIndex = 0;
 
         // Show path creation fields only when a start point was chosen
@@ -411,29 +421,49 @@ public class PathGeneratorWindow : EditorWindow {
         if (showJoints)
         {
             Handles.color = Color.red;
-            Handles.SphereCap(0, data.jointPointA.getPosition(), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointA.getPosition(), Quaternion.identity, 0.2f);
             Handles.Label(data.jointPointA.getPosition(), data.jointPointA.getLabel(), style);
-            Handles.SphereCap(0, data.jointPointB.getPosition(), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointA.getWalkingStartPosition(0), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointA.getWalkingStartPosition(1), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointA.getWalkingStartPosition(2), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointA.getWalkingStartPosition(3), Quaternion.identity, 0.1f);
+
+            Handles.SphereCap(0, data.jointPointB.getPosition(), Quaternion.identity, 0.2f);
             Handles.Label(data.jointPointB.getPosition(), data.jointPointB.getLabel(), style);
-            Handles.SphereCap(0, data.jointPointC.getPosition(), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointB.getWalkingStartPosition(0), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointB.getWalkingStartPosition(1), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointB.getWalkingStartPosition(2), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointB.getWalkingStartPosition(3), Quaternion.identity, 0.1f);
+
+            Handles.SphereCap(0, data.jointPointC.getPosition(), Quaternion.identity, 0.2f);
             Handles.Label(data.jointPointC.getPosition(), data.jointPointC.getLabel(), style);
+            Handles.SphereCap(0, data.jointPointC.getWalkingStartPosition(0), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointC.getWalkingStartPosition(1), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointC.getWalkingStartPosition(2), Quaternion.identity, 0.1f);
+            Handles.SphereCap(0, data.jointPointC.getWalkingStartPosition(3), Quaternion.identity, 0.1f);
         }
 
         // Real world curves
         if (showCurves)
         {
             Handles.color = Color.red;
-            Vector3 directionVector = data.jointPointB.getPosition() - data.curveABsmallRadius.getCircleCenter();
+
+			Vector3 directionVector = data.jointPointB.getWalkingStartPosition(2) - data.curveABsmallRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveABsmallRadius.getCircleCenter(), Vector3.up, directionVector, data.curveABsmallRadius.getAngle(), data.curveABsmallRadius.getRadius());
-            directionVector = data.jointPointB.getPosition() - data.curveABlargeRadius.getCircleCenter();
+
+			directionVector = data.jointPointB.getWalkingStartPosition(3) - data.curveABlargeRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveABlargeRadius.getCircleCenter(), Vector3.up, directionVector, data.curveABlargeRadius.getAngle(), data.curveABlargeRadius.getRadius());
-            directionVector = data.jointPointC.getPosition() - data.curveBCsmallRadius.getCircleCenter();
+
+			directionVector = data.jointPointC.getWalkingStartPosition(2) - data.curveBCsmallRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveBCsmallRadius.getCircleCenter(), Vector3.up, directionVector, data.curveBCsmallRadius.getAngle(), data.curveBCsmallRadius.getRadius());
-            directionVector = data.jointPointC.getPosition() - data.curveBClargeRadius.getCircleCenter();
+
+			directionVector = data.jointPointC.getWalkingStartPosition(3) - data.curveBClargeRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveBClargeRadius.getCircleCenter(), Vector3.up, directionVector, data.curveBClargeRadius.getAngle(), data.curveBClargeRadius.getRadius());
-            directionVector = data.jointPointA.getPosition() - data.curveACsmallRadius.getCircleCenter();
+
+			directionVector = data.jointPointA.getWalkingStartPosition(2) - data.curveACsmallRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveACsmallRadius.getCircleCenter(), Vector3.up, directionVector, data.curveACsmallRadius.getAngle(), data.curveACsmallRadius.getRadius());
-            directionVector = data.jointPointA.getPosition() - data.curveAClargeRadius.getCircleCenter();
+
+			directionVector = data.jointPointA.getWalkingStartPosition(3) - data.curveAClargeRadius.getCircleCenter();
             Handles.DrawWireArc(data.curveAClargeRadius.getCircleCenter(), Vector3.up, directionVector, data.curveAClargeRadius.getAngle(), data.curveAClargeRadius.getRadius());
         }
 
@@ -449,19 +479,25 @@ public class PathGeneratorWindow : EditorWindow {
                 else
                     Handles.color = Color.green;
 
-                Handles.SphereCap(0, intersection.getPosition(), Quaternion.identity, 0.5f);
+                Handles.SphereCap(0, intersection.getPosition(), Quaternion.identity, 0.2f);
                 Handles.Label(intersection.getPosition(), intersection.getLabel(), style);
+                Handles.SphereCap(0, intersection.getWalkingStartPosition(0), Quaternion.identity, 0.1f);
+                Handles.SphereCap(0, intersection.getWalkingStartPosition(1), Quaternion.identity, 0.1f);
+                Handles.SphereCap(0, intersection.getWalkingStartPosition(2), Quaternion.identity, 0.1f);
+                Handles.SphereCap(0, intersection.getWalkingStartPosition(3), Quaternion.identity, 0.1f);
             }
         }
 
         // Virtual world paths
         if (showPaths)
         {
-            Handles.color = Color.green;
             foreach (VirtualPath path in data.paths)
             {
-                Vector3 directionVector = path.getEndPoints()[0].getPosition() - path.getCircleCenter();
                 int sign = data.getSignOfCurve(path.getEndPoints()[0].getJoint(), path.getEndPoints()[1].getJoint());
+                int pathIndex = data.getPathIndex(path.getEndPoints()[0].getJoint(), path.getCurve());
+
+                Handles.color = Color.green;
+                Vector3 directionVector = path.getEndPoints()[0].getWalkingStartPosition(pathIndex) - path.getCircleCenter();
                 Handles.DrawWireArc(path.getCircleCenter(), Vector3.up, directionVector, sign * path.getAngle(), path.getRadius());
             }
         }

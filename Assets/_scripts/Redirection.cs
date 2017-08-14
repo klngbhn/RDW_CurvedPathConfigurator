@@ -13,21 +13,40 @@ public class Redirection : MonoBehaviour {
 
     public RedirectionDataStructure data;
 
+    private string pathLayoutAsset = "data";
+
     private JointPoint currentJoint;
     private VirtualIntersection currentIntersection;
     private Curve currentCurve;
     private VirtualPath currentPath;
 
-    private bool ready = false;
+    public bool ready = false;
     private bool redirectionStarted = false;
     private int redirectionDirection = 0;
 
+	private float angleWalkedOnRealCircle = 0;
+	private float angleWalkedOnVirtualCircle = 0;
     private float oldRotation = 0;
 
     void Start() {
         Debug.Log("Application started");
+		if (data == null)
+			this.loadPathLayout (pathLayoutAsset);
+		else {
+			currentIntersection = data.intersections [0];
+			currentJoint = currentIntersection.getJoint ();
+		}
+    }
+
+	/*
+	 * Loads path layout asset with the specified name from a resources folder.
+	 * */
+    public void loadPathLayout(string layoutName)
+    {
+        pathLayoutAsset = layoutName;
+
         // Load data structure object (created by tool) from disk
-        data = (RedirectionDataStructure)Resources.LoadAll("data")[0] as RedirectionDataStructure;
+        data = (RedirectionDataStructure)Resources.LoadAll(pathLayoutAsset)[0] as RedirectionDataStructure;
         if (data != null)
         {
             //Debug.Log("Label: " + data.jointPointA.getLabel());
@@ -46,10 +65,6 @@ public class Redirection : MonoBehaviour {
      * "Ready" button -> startRedirection -> stopRedirection
      * */
     void Update () {
-		if (Input.GetKeyDown(KeyCode.Space))
-		{
-            ready = true;
-        }
 
         if (redirectionStarted)
         {
@@ -63,7 +78,7 @@ public class Redirection : MonoBehaviour {
                 stopRedirection(currentPath.getOtherIntersection(currentIntersection), true);
 
             // Is user stopping at start intersection?
-            if (isPathLeft(currentIntersection))
+            else if (isPathLeft(currentIntersection))
                 stopRedirection(currentIntersection, false);
         }
         else if(ready)
@@ -99,14 +114,15 @@ public class Redirection : MonoBehaviour {
     /*
      * Checks if user reached an intersection.
      * */
-    private bool isPathLeft(VirtualIntersection intersection)
+	private bool isPathLeft(VirtualIntersection intersection)
     {
         int direction = getRedirectionDirection(intersection.getJoint(), currentPath.getCurve());
-        Vector3 directionToPathCircleCenter = (currentPath.getCircleCenter() - intersection.getPosition()).normalized;
-        Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToPathCircleCenter;
-        Vector3 planePosition = intersection.getPosition() + rotatedDirectionVector * 0.25f;
-        Plane plane = new Plane(rotatedDirectionVector.normalized, planePosition);
-        if (plane.GetSide(Camera.main.transform.position))
+        int pathIndex = data.getPathIndex(intersection.getJoint(), currentPath.getCurve());
+
+		Vector3 directionToPathCircleCenter = (currentPath.getCurve().getCircleCenter() - intersection.getJoint().getWalkingStartPosition(pathIndex)).normalized;
+		Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToPathCircleCenter;
+		Plane plane = new Plane(rotatedDirectionVector.normalized, intersection.getJoint().getWalkingStartPosition(pathIndex));
+		if (plane.GetSide(Camera.main.transform.localPosition))
             return false;
         return true;
     }
@@ -117,11 +133,12 @@ public class Redirection : MonoBehaviour {
     private bool isPathChosen(VirtualPath path)
     {
         int direction = getRedirectionDirection(currentJoint, path.getCurve());
-        Vector3 directionToPathCircleCenter = (path.getCircleCenter() - currentIntersection.getPosition()).normalized;
-        Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToPathCircleCenter;
-        Vector3 planePosition = currentIntersection.getPosition() + rotatedDirectionVector * 0.25f;
-        Plane plane = new Plane(rotatedDirectionVector.normalized, planePosition);
-        if (plane.GetSide(Camera.main.transform.position))
+        int pathIndex = data.getPathIndex(currentJoint, path.getCurve());
+
+		Vector3 directionToCurveCircleCenter = (path.getCurve().getCircleCenter() - currentJoint.getWalkingStartPosition(pathIndex)).normalized;
+		Vector3 rotatedDirectionVector = Quaternion.AngleAxis(-direction * 90f, Vector3.up) * directionToCurveCircleCenter;
+		Plane plane = new Plane(rotatedDirectionVector.normalized, currentJoint.getWalkingStartPosition(pathIndex));
+		if (plane.GetSide(Camera.main.transform.localPosition))
             return true;
         return false;
     }
@@ -188,17 +205,20 @@ public class Redirection : MonoBehaviour {
         Quaternion realWorldCurrentRotation = Camera.main.transform.localRotation;
         //Debug.Log("Current: " + realWorldCurrentPosition);
 
+        int pathIndex = data.getPathIndex(currentJoint, currentCurve);
+
         // Calculate distance between real world current position and real world circle center point
         float distance = Vector2.Distance(realWorldCurrentPosition, switchDimensions(currentCurve.getCircleCenter()));
         //Debug.Log("Distance: " + distance);
 
-        // Calculate angle between radius and distance
-        //Vector2.Angle(switchDimensions(switchDimensions(currentJoint.getPosition() - currentCurve.getCircleCenter())), realWorldCurrentPosition - switchDimensions(currentCurve.getCircleCenter()));
-        float angleWalkedOnRealCircle = Mathf.Acos((Vector2.Dot((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())), (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition))) / ((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(currentJoint.getPosition())).magnitude * (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition).magnitude));
+        // Calculate angle between start and current position
+        //float angleWalkedOnRealCircle = Vector2.Angle(switchDimensions(switchDimensions(currentJoint.getPosition() + redirectionDirection*data.calculateOffset(currentJoint.getPosition(), currentCurve.getCircleCenter()) - currentCurve.getCircleCenter())), realWorldCurrentPosition - switchDimensions(currentCurve.getCircleCenter()));
+        Vector3 realWalkingStartPosition = currentJoint.getWalkingStartPosition(pathIndex);
+		angleWalkedOnRealCircle = Mathf.Acos((Vector2.Dot((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(realWalkingStartPosition)), (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition))) / ((switchDimensions(currentCurve.getCircleCenter()) - switchDimensions(realWalkingStartPosition)).magnitude * (switchDimensions(currentCurve.getCircleCenter()) - realWorldCurrentPosition).magnitude));
         //Debug.Log("angleWalkedOnRealCircle: " + angleWalkedOnRealCircle);
 
         // Multiply angle and radius = walked distance
-        float walkedDistance = angleWalkedOnRealCircle * currentCurve.getRadius();
+		float walkedDistance = angleWalkedOnRealCircle * currentCurve.getRadius();
         //Debug.Log("Walked: " + walkedDistance);
 
         // Calculate side drift: d-r
@@ -206,21 +226,22 @@ public class Redirection : MonoBehaviour {
         //Debug.Log("Side: " + sideDrift);
 
         // Calculate angle on virtual circle
-        float angleWalkedOnVirtualCircle = walkedDistance / currentPath.getRadius();
+        angleWalkedOnVirtualCircle = walkedDistance / currentPath.getRadius();
          //Debug.Log("angleWalkedOnVirtualCircle: " + angleWalkedOnVirtualCircle);
 
-        // Calculate direction from virtual circle center to intersection
-        Vector2 directionToIntersection = switchDimensions(currentIntersection.getPosition() - currentPath.getCircleCenter()).normalized;
+		// Calculate direction from virtual circle center to intersection // - redirectionDirection*data.calculateOffset(currentIntersection.getPosition(), currentPath.getCircleCenter())
+		Vector3 virtualWalkingStartPosition = currentIntersection.getWalkingStartPosition(pathIndex);
+        Vector2 directionToIntersection = switchDimensions(virtualWalkingStartPosition - currentPath.getCircleCenter()).normalized;
         //Debug.Log("directionToIntersection: " + directionToIntersection);
 
-        // Calculate virtual position by rotating direction by angle walked
-        Vector3 virtualPosition = Quaternion.AngleAxis(redirectionDirection * angleWalkedOnVirtualCircle * Mathf.Rad2Deg, Vector3.up) * new Vector3(directionToIntersection.x, 0, directionToIntersection.y);
-        // Add side drift to virtual position
-        virtualPosition = virtualPosition * (currentPath.getRadius() + sideDrift);
+        // Calculate direction to virtual position by rotating direction by angle walked
+        Vector3 directionToVirtualPosition = Quaternion.AngleAxis(redirectionDirection * angleWalkedOnVirtualCircle * Mathf.Rad2Deg, Vector3.up) * new Vector3(directionToIntersection.x, 0, directionToIntersection.y);
+        // Multiply direction by radius + side drift
+		directionToVirtualPosition = directionToVirtualPosition * (currentPath.getRadius() + sideDrift);
         //Debug.Log("virtualPosition: " + virtualPosition);
 
         // Calculate and set virtual position
-        this.transform.position = new Vector3(currentPath.getCircleCenter().x + virtualPosition.x, Camera.main.transform.localPosition.y, currentPath.getCircleCenter().z + virtualPosition.z); 
+        this.transform.position = new Vector3(currentPath.getCircleCenter().x + directionToVirtualPosition.x, Camera.main.transform.localPosition.y, currentPath.getCircleCenter().z + directionToVirtualPosition.z); 
         //Debug.Log(this.transform.position);
 
         // Calculate and set virtual rotation: redirection + current camera rotation + old rotation
@@ -239,10 +260,10 @@ public class Redirection : MonoBehaviour {
     {
         currentIntersection = intersection; 
         currentJoint = currentIntersection.getJoint();
-        if (addAngle)
-            oldRotation += currentPath.getAngle() * -redirectionDirection;
+		if (addAngle)
+			oldRotation += Mathf.Rad2Deg * -redirectionDirection * (angleWalkedOnRealCircle - angleWalkedOnVirtualCircle);//(Mathf.Abs(currentCurve.getAngle()) - Mathf.Abs(currentPath.getAngle())) * -redirectionDirection;
         redirectionStarted = false;
-        Debug.Log("Redirection stopped at joint: " + currentJoint.getLabel() + ", intersection: " + currentIntersection.getLabel());
+        Debug.Log("Redirection stopped at joint: " + currentJoint.getLabel() + ", intersection: " + currentIntersection.getLabel() + " (old rotation: " + oldRotation + ")");
     }
 
     /*
